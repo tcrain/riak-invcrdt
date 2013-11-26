@@ -1,0 +1,24 @@
+#!/usr/bin/env escript
+%% -*- erlang -*-
+%%! -smp enable -sname worker -mnesia debug verbose
+
+main([N_THREADS,INIT_VALUE, ROOT, SERVER_ADDRRESS, BUCKET]) ->
+	main([N_THREADS,INIT_VALUE, ROOT, SERVER_ADDRRESS, BUCKET, "default"]);
+
+main([N_THREADS,INIT_VALUE, ROOT, SERVER_ADDRESS, BUCKET, BUCKET_TYPE | OTHER_NODES]) ->
+		true = code:add_path(string:concat(ROOT, "riak-erlang-client/ebin")),
+		true = code:add_path(string:concat(ROOT, "riak-erlang-client/ebin")),
+		true = code:add_path(string:concat(ROOT, "riak-erlang-client/deps/meck/ebin")), 
+		true = code:add_path(string:concat(ROOT, "riak-erlang-client/deps/protobuffs/ebin")),
+		true = code:add_path(string:concat(ROOT, "riak-erlang-client/deps/riak_pb/ebin")),
+		true = code:add_path(string:concat(ROOT, "riak-worker")),
+
+		BUCKET_TERM = {list_to_binary(BUCKET_TYPE), list_to_binary(BUCKET)},
+		
+		io:format("Other nodes ~p~n",[OTHER_NODES]),
+
+        N = list_to_integer(N_THREADS),
+		V = list_to_integer(INIT_VALUE),
+		worker_sc:reset(V,SERVER_ADDRESS,BUCKET_TERM),
+		Stats = client_stats:start(N,V),
+		worker_sc:start(init, N, 0, Stats, SERVER_ADDRESS, BUCKET_TERM).
