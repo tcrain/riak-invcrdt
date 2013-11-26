@@ -8,18 +8,29 @@ Here is a list of useful commands to configure Erlang, Riak and test our experim
 # 1 - Install Erlang
 
 sudo yum install gcc glibc-devel make ncurses-devel openssl-devel autoconf java-1.6.0-openjdk-devel.x86_64
+
 wget http://www.erlang.org/download/otp_src_R16B02.tar.gz
+
 tar -xvf otp_src_R16B02.tar.gz
+
 cd otp_src_R16B02
+
 ./configure
+
 make
+
 sudo make install
 
 # 2 - Install Riak
+
 sudo yum install gcc gcc-c++ glibc-devel make git pam-devel
+
 git clone https://github.com/basho/riak
+
 cd riak
+
 make rel
+
 mv rel/riak ..
 
 # 3 - Increase maximum file handlers in CentOS
@@ -29,43 +40,57 @@ sudo sysctl -p
 ulimit -n 65535
 
 # 4 - Create the Strong Consistency Bucket
+
 cd ../riak/bin
+
 ./riak-admin bucket-type create STRONG '{"props": {"consistent":true,}}'
+
 ./riak-admin bucket-type activate STRONG
 
 #Create the cluster
+
 ./riak-admin cluster join riak@ADDRESS
+
 ./riak-admin cluster plan
+
 ./riak-admin cluster commit
-
-
 
 #Add a pre-/post-commit hook using HTTP interface
 curl -XPUT -H "Content-Type: application/json" http://127.0.0.1:8098/buckets/buck/props -d '{"props":{"precommit":[{"mod": "MODULE", "fun": "FUNCTION"}]}}'
 
 #Check Bucket properties
+
 curl localhost:8098/buckets/messages/props | python -mjson.tool
 
 
 Misc DEBUG commands
+
 worker_sc:reset(100,"127.0.0.1",<<"ITEMS2">>).  
+
 worker_sc:start(init,10,0,client_stats:start(10,100),"127.0.0.1",<<"ITEMS2">>).
 
 worker_sc:reset(100,"127.0.0.1",{<<"STRONG">>,<<"ITEMS">>}).
+
 worker_sc:start(init,1,0,client_stats:start(1,100),"127.0.0.1",{<<"STRONG">>,<<"ITEMS">>}).
 
 {ok, Pid} = riakc_pb_socket:start_link("127.0.0.1", 8087).
+
 riakc_pb_socket:get(Pid, <<"ITEMS2">>, <<"KEY">>, [{r,1}]).
+
 riakc_pb_socket:get(Pid, {<<"STRONG">>,<<"ITEMS">>}, <<"KEY">>, [],5000).
 
 
 worker_sc:reset_crdt(100,"127.0.0.1",{<<"STRONG">>,<<"ITEMS">>},noID,[]).
+
 worker_sc:start(init,1,0,client_stats:start(1,100),"127.0.0.1",{<<"STRONG">>,<<"ITEMS">>}).
+
 {ok,Obj}=riakc_pb_socket:get(Pid, {<<"STRONG">>,<<"ITEMS">>}, <<"KEY">>, [],5000).
 
 
 Stats = client_stats:start(1,100).
+
 W = worker_sc:init(Stats,"127.0.0.1",{<<"STRONG">>,<<"ITEMS">>},site1).
+
 worker_sc:update_value_crdt(W).
 
 
