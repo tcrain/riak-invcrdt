@@ -63,7 +63,7 @@ curl -XPUT -H "Content-Type: application/json" http://127.0.0.1:8098/buckets/buc
 curl localhost:8098/buckets/messages/props | python -mjson.tool
 
 
-Misc DEBUG commands
+##Misc DEBUG commands
 
 worker_sc:reset(100,"127.0.0.1",<<"ITEMS2">>).  
 
@@ -92,5 +92,17 @@ Stats = client_stats:start(1,100).
 W = worker_sc:init(Stats,"127.0.0.1",{<<"STRONG">>,<<"ITEMS">>},site1).
 
 worker_sc:update_value_crdt(W).
+
+
+###Test CRDT version
+worker_sc:reset_crdt(100,{<<"STRONG">>,<<"ITEMS">>},site1,["127.0.0.1","127.0.0.1"],[site2]).
+Stats = client_stats:start(1,100).
+worker_sc:start(init, 1, 0, Stats, "127.0.0.1", {<<"STRONG">>,<<"ITEMS">>},site1).
+
+###Run e-script
+./scripts/script localhost site0 1 100 /Users/balegas/workspace/riak-invcrdt/ site ITEMS STRONG true 127.0.0.1 localhost
+
+
+
 
 
