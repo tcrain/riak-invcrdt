@@ -84,7 +84,7 @@ worker_sc:start(init, 1, 0, Stats, "127.0.0.1", {<<"STRONG">>,<<"ITEMS">>},site1
 nncounter:from_binary(riakc_obj:get_value(Obj)).
 
 ###Run e-script
-./scripts/script localhost site0 1 100 /Users/balegas/workspace/riak-invcrdt/ site ITEMS STRONG true 127.0.0.1 localhost
+./reset-script ID:ADDRESS 1000 /Users/balegas/workspace/riak-invcrdt/ ITEMS STRONG OtherIds:OtherAddresses
 
 ##Copy worker dir to remote host
 rsync --exclude '*.git' --exclude 'riak-erlang-client' riak-invcrdt HOST:~
