@@ -1,0 +1,28 @@
+#!/usr/bin/env escript
+%% -*- erlang -*-
+%%! -smp enable -sname worker -mnesia debug verbose
+
+main([LOCAL_ADDRESS, INIT_VALUE, ROOT, BUCKET, BUCKET_TYPE | OTHER_SERVER_ADDRESSES]) ->
+
+		true = code:add_path(string:concat(ROOT, "riak-erlang-client/ebin")),
+		true = code:add_path(string:concat(ROOT, "riak-erlang-client/ebin")),
+		true = code:add_path(string:concat(ROOT, "riak-erlang-client/deps/meck/ebin")), 
+		true = code:add_path(string:concat(ROOT, "riak-erlang-client/deps/protobuffs/ebin")),
+		true = code:add_path(string:concat(ROOT, "riak-erlang-client/deps/riak_pb/ebin")),
+		true = code:add_path(string:concat(ROOT, "")),
+
+		V = list_to_integer(INIT_VALUE),
+
+
+		BUCKET_TERM = {list_to_binary(BUCKET_TYPE), list_to_binary(BUCKET)},
+		
+		ALL=[{MY_ID, _} | IDS] = lists:map(fun(String) ->
+			Id= string:sub_string(String,1,string:rstr(String,":")-1),
+			Address = string:sub_string(String,string:rstr(String,":")+1),
+			{Id,Address} end,[LOCAL_ADDRESS | OTHER_SERVER_ADDRESSES]),
+
+		io:format("Local Id: ~p. Other Ids: ~p~n",[MY_ID, IDS]),
+		io:format("ALL Addresses: ~p~n",[ALL]),
+
+		worker_sc:reset_crdt(V,BUCKET_TERM,MY_ID,ALL).
+		

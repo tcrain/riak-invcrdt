@@ -35,8 +35,11 @@ mv rel/riak ..
 
 # 3 - Increase maximum file handlers in CentOS
 sudo vi /etc/sysctl.conf		add line: fs.file-max = 512000
+
 sudo sysctl -p
+
 /etc/security/limits.conf 		add line: * - nofile 65535
+
 ulimit -n 65535
 
 # 4 - Create the Strong Consistency Bucket
@@ -63,45 +66,28 @@ curl -XPUT -H "Content-Type: application/json" http://127.0.0.1:8098/buckets/buc
 curl localhost:8098/buckets/messages/props | python -mjson.tool
 
 
-##Misc DEBUG commands
+##Clear Riak Cluster
 
-worker_sc:reset(100,"127.0.0.1",<<"ITEMS2">>).  
-
-worker_sc:start(init,10,0,client_stats:start(10,100),"127.0.0.1",<<"ITEMS2">>).
-
-worker_sc:reset(100,"127.0.0.1",{<<"STRONG">>,<<"ITEMS">>}).
-
-worker_sc:start(init,1,0,client_stats:start(1,100),"127.0.0.1",{<<"STRONG">>,<<"ITEMS">>}).
-
-{ok, Pid} = riakc_pb_socket:start_link("127.0.0.1", 8087).
-
-riakc_pb_socket:get(Pid, <<"ITEMS2">>, <<"KEY">>, [{r,1}]).
-
-riakc_pb_socket:get(Pid, {<<"STRONG">>,<<"ITEMS">>}, <<"KEY">>, [],5000).
-
-
-worker_sc:reset_crdt(100,"127.0.0.1",{<<"STRONG">>,<<"ITEMS">>},noID,[]).
-
-worker_sc:start(init,1,0,client_stats:start(1,100),"127.0.0.1",{<<"STRONG">>,<<"ITEMS">>}).
-
-{ok,Obj}=riakc_pb_socket:get(Pid, {<<"STRONG">>,<<"ITEMS">>}, <<"KEY">>, [],5000).
-
-
-Stats = client_stats:start(1,100).
-
-W = worker_sc:init(Stats,"127.0.0.1",{<<"STRONG">>,<<"ITEMS">>},site1).
-
-worker_sc:update_value_crdt(W).
 
 
 ###Test CRDT version
 worker_sc:reset_crdt(100,{<<"STRONG">>,<<"ITEMS">>},site1,["127.0.0.1","127.0.0.1"],[site2]).
+
 Stats = client_stats:start(1,100).
+
 worker_sc:start(init, 1, 0, Stats, "127.0.0.1", {<<"STRONG">>,<<"ITEMS">>},site1).
+
+{ok, Pid} = riakc_pb_socket:start_link("127.0.0.1", 8087).
+
+{ok,Obj}=riakc_pb_socket:get(Pid, {<<"STRONG">>,<<"ITEMS">>}, <<"KEY">>, [],5000).
+
+nncounter:from_binary(riakc_obj:get_value(Obj)).
 
 ###Run e-script
 ./scripts/script localhost site0 1 100 /Users/balegas/workspace/riak-invcrdt/ site ITEMS STRONG true 127.0.0.1 localhost
 
+##Copy worker dir to remote host
+rsync --exclude '*.git' --exclude 'riak-erlang-client' riak-invcrdt HOST:~
 
 
 
