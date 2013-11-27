@@ -13,6 +13,9 @@
 %% -- 'remote' buckets should use eventual consistency and 'origin' use strong consistency.
 %% -- Should also trasnfers permissions between replicas.
 
+
+%% Needs to clear previous buffered values
+
 -module(replication_agent).
 -author("balegas").
 

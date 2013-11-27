@@ -10,9 +10,9 @@
 -author("balegas").
 
 %% API
--export([init/4, update_value/1, update_value_crdt/1, loop/5, start/5, start/6, reset/3, reset_crdt/5]).
+-export([init/4, update_value/1, update_value_crdt/1, loop/5, start/6, start/7, reset/3, reset_crdt/5]).
 
--record(worker, {id :: term(), lnk:: term() , nkeys :: integer(), stats :: term(), bucket :: binary() | {binary(),binary()}}).
+-record(worker, {id :: term(), lnk:: term() , stats :: term(), bucket :: binary() | {binary(),binary()}}).
 
 -define(KEY, <<"KEY">>).
 -define(MAX_INT, 2147483648).
@@ -75,49 +75,54 @@ readIntegerValue(RiakObj) ->
 
 % Update and reset function for CRDT version
 
-reset_crdt(InitValue, Address, Bucket,Id, OtherIds) ->
-    Worker = init(nil, Address, Bucket,Id),
-    Result = riakc_pb_socket:get(Worker#worker.lnk, Bucket, ?KEY,[],?DEFAULT_TIMEOUT),
+reset_crdt(InitValue, Bucket,Id, Addresses, OtherIds) ->
 	Counter = nncounter:new(Id,InitValue),
 	PartitionedCounter = lists:foldl(fun(OtherId,InCounter) -> 
-		{ok, OutCounter} = nncounter:transfer(Id,OtherId,InitValue div length(OtherIds)+1,InCounter),
+		{ok, OutCounter} = nncounter:transfer(Id,OtherId,InitValue div (length(OtherIds)+1),InCounter),
 		OutCounter end, Counter, OtherIds),
+	lists:foldl(fun(Address,_)-> reset_crdt(PartitionedCounter, Address, Bucket) end,
+		PartitionedCounter,Addresses).
+
+reset_crdt(Object, Address, Bucket) ->
+	{ok, Pid} = riakc_pb_socket:start_link(Address, 8087),
+    Result = riakc_pb_socket:get(Pid, Bucket, ?KEY,[],?DEFAULT_TIMEOUT),
     NewObj = case Result of
                {ok, Fetched} ->
-                 riakc_obj:update_value(Fetched, nncounter:to_binary(PartitionedCounter));
+                 riakc_obj:update_value(Fetched, nncounter:to_binary(Object));
                {error,notfound} ->
-                 riakc_obj:new(Bucket, ?KEY, nncounter:to_binary(PartitionedCounter))
+                 riakc_obj:new(Bucket, ?KEY, nncounter:to_binary(Object))
              end,
-    riakc_pb_socket:put(Worker#worker.lnk, NewObj,[],?DEFAULT_TIMEOUT),
+    riakc_pb_socket:put(Pid, NewObj,[],?DEFAULT_TIMEOUT),
 end_reset_crdt.
 
 update_value_crdt(Worker) ->
-  Result = riakc_pb_socket:get(Worker#worker.lnk,Worker#worker.bucket, ?KEY,[],?DEFAULT_TIMEOUT)  ,
-  case Result of
-    {ok, Fetched} ->
-      CRDT = nncounter:from_binary(riakc_obj:get_value(Fetched)),
-	  Int = nncounter:value(CRDT),
-	  case Int > 0 of
-		  true ->  
-			  {ok,New_CRDT} = nncounter:decrement(Worker#worker.id,1,CRDT),
-			  StartOp = now(),
-			  PutResult = riakc_pb_socket:put(Worker#worker.lnk, riakc_obj:update_value(Fetched,nncounter:to_binary(New_CRDT)),[],?DEFAULT_TIMEOUT),
-			  Latency = timer:now_diff(now(),StartOp),
-			  case PutResult of
-				  ok ->
-					  Worker#worker.stats ! {Int, Latency, now(), success},
-					  DueTime=?MIN_INTERVAL-(Latency div ?MILLIS),
-					  case DueTime > 0 of
-						  true -> timer:sleep(DueTime);
-						  _ -> nothing
-					  end,
-					  {ok,Int-1};
-				 {error, _} -> Worker#worker.stats ! {Int, Latency, now(), fail},fail;
-				 _ -> fail
-			  end;
-		  false -> {ok,Int}
-	  end
-	end.
+  {ok, Fetched} = riakc_pb_socket:get(Worker#worker.lnk,Worker#worker.bucket, ?KEY,[],?DEFAULT_TIMEOUT),
+  CRDT = nncounter:from_binary(riakc_obj:get_value(Fetched)),
+  Int = nncounter:value(CRDT),
+  case Int > 0 of
+	  true ->  
+	  	case nncounter:decrement(Worker#worker.id,1,CRDT) of
+			{ok,New_CRDT} ->
+			StartOp = now(),
+			PutResult = riakc_pb_socket:put(Worker#worker.lnk, riakc_obj:update_value(Fetched,nncounter:to_binary(New_CRDT)),[],?DEFAULT_TIMEOUT),
+			Latency = timer:now_diff(now(),StartOp),
+			case PutResult of
+				ok ->
+					Worker#worker.stats ! {Int, Latency, now(), success},
+					DueTime=?MIN_INTERVAL-(Latency div ?MILLIS),
+					case DueTime > 0 of
+						true -> timer:sleep(DueTime);
+						_ -> nothing
+					end,
+					{ok,Int-1};
+					{error, _} -> Worker#worker.stats ! {Int, Latency, now(), fail},fail;
+					_ -> fail
+				end;
+				%% Stops when no permissions are available
+				forbidden -> {ok,-1}
+			end;
+		false -> {ok,Int}
+   end.
 
 
 % The LOOP functions, that execute the workload
@@ -134,26 +139,25 @@ loop(Worker,Successful, Retries, Value, ParentPid) ->
 
 % START and STOP nodes
 
-start(_, 0, _, _, _) -> started;
+start(_, 0, _, _, _,_) -> started;
 
-start(Pid, N, Stats, Address, Bucket) ->
-  Worker = init(Stats, Address, Bucket,noID),
+start(Pid, N, Stats, Address, Bucket,Id) ->
+  Worker = init(Stats, Address, Bucket,Id),
   spawn(worker_sc,loop,[Worker,0,0,?MAX_INT,Pid]),
-  start(Pid, N-1, Stats, Address, Bucket).
+  start(Pid, N-1, Stats, Address, Bucket,Id).
 
-start(init,N,Finished, Stats, Address,Bucket) ->
-	start(self(), N, Stats, Address,Bucket),
-	start(wait_proc,N,Finished, Stats, Address,Bucket);
+start(init,N,Finished, Stats, Address,Bucket,Id) ->
+	start(self(), N, Stats, Address,Bucket,Id),
+	start(wait_proc,N,Finished, Stats, Address,Bucket,Id);
 
-start(wait_proc,N, Finished, Stats, _, _) when Finished == N ->
-	io:format("Sent Finish"),
+start(wait_proc,N, Finished, Stats, _, _,_) when Finished == N ->
 	Stats ! finish,
 	timer:sleep(2000);
 
 
-start(wait_proc,N,Finished, Stats, Address,Bucket) ->	
+start(wait_proc,N,Finished, Stats, Address,Bucket,Id) ->	
 	receive
-		end_loop -> start(wait_proc, N, Finished +1, Stats, Address, Bucket)
+		end_loop -> start(wait_proc, N, Finished +1, Stats, Address, Bucket,Id)
 	end.
 
 
